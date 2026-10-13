@@ -1,6 +1,14 @@
 
 const API_URL = "http://localhost:3000/api/auth";
 
+// Access token lives only in memory, never in localStorage/sessionStorage,
+// so it isn't readable by an XSS payload that can read web storage.
+let accessToken = null;
+
+export const setAccessToken = (token) => {
+  accessToken = token;
+};
+
 // Shared promise prevents simultaneous refresh requests.
 let refreshPromise = null;
 
@@ -64,7 +72,7 @@ export const refreshAccessToken = async () => {
         throw new Error("No access token returned by server");
       }
 
-      localStorage.setItem("accessToken", data.accessToken);
+      setAccessToken(data.accessToken);
 
       return data;
     })().finally(() => {
@@ -93,10 +101,8 @@ export const authenticatedFetch = async (
     });
   };
 
-  const currentToken = localStorage.getItem("accessToken");
-
   // First attempt
-  const response = await makeRequest(currentToken);
+  const response = await makeRequest(accessToken);
 
   if (response.status !== 401) {
     return response;
@@ -108,7 +114,7 @@ export const authenticatedFetch = async (
   try {
     refreshed = await refreshAccessToken();
   } catch (error) {
-    localStorage.removeItem("accessToken");
+    setAccessToken(null);
     throw error;
   }
 
@@ -117,23 +123,17 @@ export const authenticatedFetch = async (
 
   // Do not refresh repeatedly if the retry is also unauthorized.
   if (retryResponse.status === 401) {
-    localStorage.removeItem("accessToken");
+    setAccessToken(null);
   }
 
   return retryResponse;
 };
 
 // Get the logged-in user's profile
-export const getProfile = async (accessToken) => {
-  const response = await authenticatedFetch(
-    `${API_URL}/profile`,
-    {
-      method: "GET",
-      headers: accessToken
-        ? { Authorization: `Bearer ${accessToken}` }
-        : {},
-    }
-  );
+export const getProfile = async () => {
+  const response = await authenticatedFetch(`${API_URL}/profile`, {
+    method: "GET",
+  });
 
   return parseResponse(response);
 };

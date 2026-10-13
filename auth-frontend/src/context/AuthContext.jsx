@@ -11,6 +11,8 @@ import {
   loginUser,
   getProfile,
   logoutUser,
+  refreshAccessToken,
+  setAccessToken,
 } from "../services/auth";
 
 const AuthContext = createContext(null);
@@ -25,14 +27,16 @@ export function AuthProvider({ children }) {
 
     const restoreSession = async () => {
       try {
-        const accessToken = localStorage.getItem("accessToken");
-        const profile = await getProfile(accessToken);
+        // The access token only lives in memory, so after a reload the
+        // only way back in is the HttpOnly refresh cookie.
+        await refreshAccessToken();
+        const profile = await getProfile();
 
         if (!cancelled) {
           setUser(profile.user ?? profile);
         }
       } catch {
-        localStorage.removeItem("accessToken");
+        setAccessToken(null);
 
         if (!cancelled) {
           setUser(null);
@@ -55,7 +59,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const data = await loginUser(email, password);
 
-    localStorage.setItem("accessToken", data.accessToken);
+    setAccessToken(data.accessToken);
     setUser(data.user);
 
     return data;
@@ -66,7 +70,7 @@ export function AuthProvider({ children }) {
     try {
       await logoutUser();
     } finally {
-      localStorage.removeItem("accessToken");
+      setAccessToken(null);
       setUser(null);
     }
   }, []);
